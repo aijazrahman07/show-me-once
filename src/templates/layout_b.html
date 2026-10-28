@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Inbound Dock — Layout B</title></head>
+<body style="font-family:sans-serif;max-width:720px;margin:32px auto">
+<h1>Inbound Dock — Layout B</h1>
+<div style="display:flex;gap:24px">
+<div style="flex:1">
+<h3>Step 1 — Handler memo</h3>
+<label>Memo (optional)<br>
+  <input id="note" type="text" size="30" placeholder="dock memo">
+</label>
+<h3>Step 2 — Shipment</h3>
+<label>Shipment barcode<br>
+  <select id="delivery"></select>
+</label>
+<p id="po" style="color:#444"></p>
+</div>
+<div style="flex:1">
+<h3>Step 3 — Count &amp; file</h3>
+<label>Count delivered<br>
+  <input id="qty" type="number" min="0" placeholder="count">
+</label><br>
+<label><input id="zero" type="checkbox"> verified empty — confirmed zero</label><br><br>
+<label>Amendment justification (needed to change a filed record)<br>
+  <input id="reason" type="text" size="30" placeholder="">
+</label><br><br>
+<button id="go">File reconciliation</button><br><br>
+<label><input id="fail" type="checkbox"> force save error (drill)</label>
+</div>
+</div>
+<h2>Outcome</h2>
+<pre id="result">(no filing yet)</pre>
+<h2>Filed records</h2>
+<pre id="records"></pre>
+<h2>Supervisor review bin</h2>
+<pre id="queue"></pre>
+<script>
+const $ = id => document.getElementById(id);
+let deliveries = [], pos = [];
+async function load() {
+  deliveries = await (await fetch('/api/deliveries')).json();
+  pos = await (await fetch('/api/purchase-orders')).json();
+  $('delivery').innerHTML = deliveries.map(d =>
+    `<option value="${d.id}">${d.purchaseOrder} / ${d.id}</option>`).join('');
+  showPO(); refresh();
+}
+function showPO() {
+  const d = deliveries.find(x => x.id === $('delivery').value);
+  const p = pos.find(x => x.id === (d && d.purchaseOrder));
+  $('po').textContent = p ? `Order ${p.id} — ${p.item} × ${p.orderedQuantity} expected` : '';
+  if (d && d.receivedQuantity != null) $('qty').value = d.receivedQuantity;
+}
+$('delivery').onchange = showPO;
+$('go').onclick = async () => {
+  const qty = $('qty').value === '' ? null : Number($('qty').value);
+  const r = await fetch('/api/reconcile', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({deliveryId: $('delivery').value, receivedQuantity: qty,
+      note: $('note').value, correctionReason: $('reason').value,
+      confirmZero: $('zero').checked, layout: 'layout-b',
+      simulateFailure: $('fail').checked})});
+  $('result').textContent = JSON.stringify(await r.json(), null, 2);
+  refresh();
+};
+async function refresh() {
+  $('records').textContent = JSON.stringify(await (await fetch('/api/records')).json(), null, 2);
+  $('queue').textContent = JSON.stringify(await (await fetch('/api/supervisor-queue')).json(), null, 2);
+}
+load();
+</script>
+</body></html>

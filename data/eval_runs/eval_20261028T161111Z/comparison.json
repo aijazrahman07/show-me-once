@@ -1,0 +1,52 @@
+{
+  "evalId": "eval_20261028T161111Z",
+  "procedure": "docs/PROCEDURE.md (reviewed 2026-10-28)",
+  "layout": "layout-b",
+  "cases": 9,
+  "rows": [
+    {
+      "agent": "demo-assisted",
+      "dir": "demo",
+      "correct": 9,
+      "total": 9,
+      "interventions": 3,
+      "avgMs": 1.4,
+      "modelCalls": 0,
+      "logCheck": "claims match",
+      "verdictOk": true
+    },
+    {
+      "agent": "instructed-baseline",
+      "dir": "instructed",
+      "correct": 6,
+      "total": 9,
+      "interventions": 4,
+      "avgMs": 1.8,
+      "modelCalls": 0,
+      "logCheck": "no pass claims in log",
+      "verdictOk": false
+    },
+    {
+      "agent": "macro-baseline",
+      "dir": "macro",
+      "correct": 0,
+      "total": 9,
+      "interventions": 9,
+      "avgMs": 1.1,
+      "modelCalls": 0,
+      "logCheck": "no pass claims in log",
+      "verdictOk": false
+    }
+  ],
+  "definitions": {
+    "correct": "persisted state matches the independently recomputed procedure outcome (rejections must be attempted and surfaced, not merely absent)",
+    "intervention": "case needing human input to reach the correct outcome",
+    "avgMs": "mean HTTP round-trip ms per case (macro: per replayed step)",
+    "modelCalls": "model API calls made by the agent (all procedural: 0)"
+  },
+  "limitations": [
+    "Single run, 9 held-out cases; no statistical claims.",
+    "Baselines are documented procedural stubs, not LLM agents.",
+    "Verifier is a separate implementation of the same written procedure, not a second spec author."
+  ]
+}

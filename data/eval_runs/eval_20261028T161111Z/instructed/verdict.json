@@ -1,0 +1,67 @@
+{
+  "verdicts": [
+    {
+      "id": "held-01",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-02",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-03",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-04",
+      "correct": false,
+      "issues": [
+        "no record persisted",
+        "unresolved outcome missing from supervisor queue"
+      ]
+    },
+    {
+      "id": "held-05",
+      "correct": false,
+      "issues": [
+        "record persisted despite required rejection",
+        "queue entry despite required rejection",
+        "rejection never attempted/surfaced by the agent"
+      ]
+    },
+    {
+      "id": "held-06",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-07",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-08",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-09",
+      "correct": false,
+      "issues": [
+        "status 'Discrepancy\u2014shortage' != 'match'",
+        "resolved flag wrong",
+        "discrepancy wrong",
+        "revision 1 != 2",
+        "queue entry not resolved after correction"
+      ]
+    }
+  ],
+  "logCheck": "no pass claims in log",
+  "summary": {
+    "correct": 6,
+    "wrong": 3
+  }
+}

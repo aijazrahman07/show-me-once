@@ -1,0 +1,54 @@
+{
+  "verdicts": [
+    {
+      "id": "held-01",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-02",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-03",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-04",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-05",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-06",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-07",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-08",
+      "correct": true,
+      "issues": []
+    },
+    {
+      "id": "held-09",
+      "correct": true,
+      "issues": []
+    }
+  ],
+  "logCheck": "claims match",
+  "summary": {
+    "correct": 9,
+    "wrong": 0
+  }
+}

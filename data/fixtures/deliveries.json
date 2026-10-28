@@ -1,0 +1,5 @@
+[
+  {"id":"delivery-001","purchaseOrder":"PO-001","item":"Keyboard","orderedQuantity":10,"receivedQuantity":10},
+  {"id":"delivery-002","purchaseOrder":"PO-002","item":"Keyboard","orderedQuantity":10,"receivedQuantity":8},
+  {"id":"delivery-003","purchaseOrder":"PO-003","item":"Keyboard","orderedQuantity":10,"receivedQuantity":null}
+]

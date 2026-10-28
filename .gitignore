@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+recordings/*
+!recordings/.gitkeep
+artifacts/
+coverage/
+playwright-report/
+test-results/

@@ -1,0 +1,68 @@
+[
+  {
+    "deliveryId": "delivery-102",
+    "revision": 1,
+    "reason": "Discrepancy\u2014shortage",
+    "detail": {
+      "type": "shortage",
+      "missing": 4
+    },
+    "assignedTo": "receiving-supervisor",
+    "target": "1 business day",
+    "status": "pending",
+    "createdAt": "2026-10-28T16:11:11.818642+00:00"
+  },
+  {
+    "deliveryId": "delivery-103",
+    "revision": 1,
+    "reason": "Discrepancy\u2014overage",
+    "detail": {
+      "type": "overage",
+      "excess": 3
+    },
+    "assignedTo": "receiving-supervisor",
+    "target": "1 business day",
+    "status": "pending",
+    "createdAt": "2026-10-28T16:11:11.819635+00:00"
+  },
+  {
+    "deliveryId": "delivery-104",
+    "revision": 1,
+    "reason": "missing_quantity",
+    "detail": {
+      "type": "missing_quantity"
+    },
+    "assignedTo": "receiving-supervisor",
+    "target": "1 business day",
+    "status": "pending",
+    "createdAt": "2026-10-28T16:11:11.820689+00:00"
+  },
+  {
+    "deliveryId": "delivery-108",
+    "revision": 1,
+    "reason": "Discrepancy\u2014shortage",
+    "detail": {
+      "type": "shortage",
+      "missing": 1
+    },
+    "assignedTo": "receiving-supervisor",
+    "target": "1 business day",
+    "status": "pending",
+    "createdAt": "2026-10-28T16:11:11.823336+00:00"
+  },
+  {
+    "deliveryId": "delivery-109",
+    "revision": 1,
+    "reason": "Discrepancy\u2014shortage",
+    "detail": {
+      "type": "shortage",
+      "missing": 3
+    },
+    "assignedTo": "receiving-supervisor",
+    "target": "1 business day",
+    "status": "resolved",
+    "createdAt": "2026-10-28T16:11:11.824283+00:00",
+    "resolvedAt": "2026-10-28T16:11:11.825268+00:00",
+    "resolvedByRevision": 2
+  }
+]

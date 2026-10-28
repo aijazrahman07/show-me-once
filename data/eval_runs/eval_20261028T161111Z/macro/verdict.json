@@ -1,0 +1,76 @@
+{
+  "verdicts": [
+    {
+      "id": "held-01",
+      "correct": false,
+      "issues": [
+        "no record persisted"
+      ]
+    },
+    {
+      "id": "held-02",
+      "correct": false,
+      "issues": [
+        "no record persisted",
+        "unresolved outcome missing from supervisor queue"
+      ]
+    },
+    {
+      "id": "held-03",
+      "correct": false,
+      "issues": [
+        "no record persisted",
+        "unresolved outcome missing from supervisor queue"
+      ]
+    },
+    {
+      "id": "held-04",
+      "correct": false,
+      "issues": [
+        "no record persisted",
+        "unresolved outcome missing from supervisor queue"
+      ]
+    },
+    {
+      "id": "held-05",
+      "correct": false,
+      "issues": [
+        "rejection never attempted/surfaced by the agent"
+      ]
+    },
+    {
+      "id": "held-06",
+      "correct": false,
+      "issues": [
+        "rejection never attempted/surfaced by the agent"
+      ]
+    },
+    {
+      "id": "held-07",
+      "correct": false,
+      "issues": [
+        "rejection never attempted/surfaced by the agent"
+      ]
+    },
+    {
+      "id": "held-08",
+      "correct": false,
+      "issues": [
+        "no record persisted",
+        "unresolved outcome missing from supervisor queue"
+      ]
+    },
+    {
+      "id": "held-09",
+      "correct": false,
+      "issues": [
+        "no record persisted"
+      ]
+    }
+  ],
+  "logCheck": "no pass claims in log",
+  "summary": {
+    "correct": 0,
+    "wrong": 9
+  }
+}

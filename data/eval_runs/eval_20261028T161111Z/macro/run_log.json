@@ -1,0 +1,89 @@
+{
+  "runId": "macro",
+  "agent": "macro-baseline",
+  "note": "replays 3 recorded steps verbatim; addresses no held-out case",
+  "layout": "layout-b",
+  "actor": "macro-baseline",
+  "modelCalls": 0,
+  "attempts": [
+    {
+      "sent": {
+        "deliveryId": "delivery-001",
+        "receivedQuantity": 10,
+        "note": "sealed cartons"
+      },
+      "http": 400,
+      "detail": "unknown deliveryId: delivery-001"
+    },
+    {
+      "sent": {
+        "deliveryId": "delivery-002",
+        "receivedQuantity": 8,
+        "note": "2 cartons missing from pallet"
+      },
+      "http": 400,
+      "detail": "unknown deliveryId: delivery-002"
+    },
+    {
+      "sent": {
+        "deliveryId": "delivery-003",
+        "receivedQuantity": null,
+        "note": ""
+      },
+      "http": 400,
+      "detail": "unknown deliveryId: delivery-003"
+    }
+  ],
+  "cases": [
+    {
+      "id": "held-01",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-02",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-03",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-04",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-05",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-06",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-07",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-08",
+      "attempted": false,
+      "intervention": true
+    },
+    {
+      "id": "held-09",
+      "attempted": false,
+      "intervention": true
+    }
+  ],
+  "summary": {
+    "attempted": 3,
+    "interventions": 9,
+    "avgMs": 1.1
+  }
+}
