@@ -41,6 +41,8 @@ def has_key():
 def has_requirements():
     import playwright  # noqa: F401
     import requests  # noqa: F401
+    import PIL  # noqa: F401
+    import meta_sam_parser  # noqa: F401
 
 
 def has_chromium():
@@ -79,7 +81,7 @@ def tests_pass():
 
 
 check("API key set (env or .env)", has_key)
-check("requirements installed (playwright, requests)", has_requirements)
+check("requirements installed (playwright, requests, PIL, meta-sam-parser)", has_requirements)
 check("Playwright Chromium installed (headed-capable)", has_chromium)
 check("src/app.py exists", has_app)
 check("data/procedures.json exists, non-empty & valid JSON", has_procedures)
