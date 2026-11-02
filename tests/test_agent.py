@@ -2,7 +2,9 @@
 
 Run from the project root:  python3 -m unittest discover -s tests
 """
+import base64
 import glob
+import importlib.util
 import json
 import os
 import sys
@@ -85,8 +87,13 @@ class FakePage:
 
 
 def cleanup_screenshots():
-    for p in glob.glob("/tmp/agent_turn_*_pre.png") + glob.glob("/tmp/agent_turn_*_post.png"):
-        os.remove(p)
+    seen = set()
+    for p in (glob.glob("/tmp/agent_turn_*_pre.png") + glob.glob("/tmp/agent_turn_*_post.png")
+              + glob.glob("/tmp/agent_turn_*_crop.png")
+              + glob.glob("/tmp/agent_turn_*_verify_crop.png")):
+        if p not in seen:
+            seen.add(p)
+            os.remove(p)
 
 
 class SparkUnitTest(unittest.TestCase):
@@ -310,6 +317,198 @@ class AgentServerTest(unittest.TestCase):
         goal = mloop.call_args[0][0]
         self.assertIn("PO-001", goal)
         self.assertEqual(made["page"].calls[0], ("goto", f"http://127.0.0.1:{self.port}/layout-b"))
+
+
+class SamTest(unittest.TestCase):
+    def test_no_key_returns_none(self):
+        with mock.patch.dict(os.environ, {"SAM_API_KEY": ""}), \
+                mock.patch.object(A, "get_meta_api_key", return_value=""):
+            self.assertIsNone(A.call_sam_31("aGk=", "button"))
+
+    def test_missing_requests_returns_none(self):
+        with mock.patch.dict(os.environ, {"SAM_API_KEY": "k"}), \
+                mock.patch.dict(sys.modules, {"requests": None}):
+            self.assertIsNone(A.call_sam_31("aGk=", "button"))
+
+    def test_parses_best_box(self):
+        class Box:
+            def __init__(self, left, top, right, bottom, confidence):
+                self.left, self.top, self.right, self.bottom = left, top, right, bottom
+                self.confidence = confidence
+
+        class Snap:
+            def __init__(self, records):
+                self.records = records
+
+        class Parser:
+            def push(self, text):
+                assert "<0f>" in text
+                return [Snap([Box(10, 20, 110, 120, 0.4), Box(0, 0, 5, 5, 0.9),
+                               "not-a-box"])]
+
+        class Fmt:
+            def create_parser(self):
+                return Parser()
+
+        fake_msp = types.ModuleType("meta_sam_parser")
+        fake_msp.SegmentationBoxRecord = Box
+        fake_msp.image_segmentation_format = lambda: Fmt()
+        seen = {}
+
+        class Resp:
+            status_code = 200
+
+            def json(self):
+                return {"output": [{"content": [{"text": "<0f>0<|box|>"}]}]}
+
+        fake_requests = types.ModuleType("requests")
+
+        def post(url, headers=None, json=None, timeout=None):
+            seen["url"] = url
+            seen["body"] = json
+            return Resp()
+
+        fake_requests.post = post
+        with mock.patch.dict(os.environ, {"SAM_API_KEY": "k"}), \
+                mock.patch.dict(sys.modules, {"requests": fake_requests,
+                                              "meta_sam_parser": fake_msp}):
+            out = A.call_sam_31("aW1hZ2U=", "button")
+        self.assertEqual(out, {"bbox": [0, 0, 5, 5], "score": 0.9, "boxes": 2})
+        self.assertEqual(seen["url"], A.SAM_RESPONSES_URL)
+        self.assertEqual(seen["body"]["model"], "sam-3.1")
+        self.assertFalse(seen["body"]["stream"])
+
+    def test_transport_failure_returns_none(self):
+        fake_requests = types.ModuleType("requests")
+
+        def post(url, headers=None, json=None, timeout=None):
+            raise ConnectionError("down")
+
+        fake_requests.post = post
+        with mock.patch.dict(os.environ, {"SAM_API_KEY": "k"}), \
+                mock.patch.dict(sys.modules, {"requests": fake_requests}):
+            self.assertIsNone(A.call_sam_31("aGk=", "button"))
+
+    @unittest.skipUnless(importlib.util.find_spec("PIL"), "PIL only in venv")
+    def test_crop_math(self):
+        import io
+
+        from PIL import Image
+        img = Image.new("RGB", (100, 100), "white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        full = base64.b64encode(buf.getvalue()).decode()
+        out = A.crop_with_sam(full, {"bbox": [10, 10, 50, 50]}, pad_px=0)
+        self.assertNotEqual(out, full)
+        self.assertEqual(Image.open(io.BytesIO(base64.b64decode(out))).size, (50, 50))
+
+    @unittest.skipUnless(importlib.util.find_spec("PIL"), "PIL only in venv")
+    def test_crop_rejects_tiny_box(self):
+        import io
+
+        from PIL import Image
+        img = Image.new("RGB", (100, 100), "white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        full = base64.b64encode(buf.getvalue()).decode()
+        self.assertEqual(A.crop_with_sam(full, {"bbox": [0, 0, 5, 5]}), full)
+
+    def test_crop_without_pil_returns_original(self):
+        with mock.patch.dict(sys.modules, {"PIL": None}):
+            self.assertEqual(A.crop_with_sam("aGk=", {"bbox": [0, 0, 10, 10]}), "aGk=")
+
+    def test_crop_bad_input_returns_original(self):
+        self.assertEqual(A.crop_with_sam("!!!not-b64!!!", {"bbox": [0, 0, 50, 50]}),
+                         "!!!not-b64!!!")
+        self.assertEqual(A.crop_with_sam("aGk=", None), "aGk=")
+
+    def test_sam_disabled_without_imports(self):
+        with mock.patch.dict(sys.modules, {"requests": None}):
+            self.assertFalse(A.sam_enabled())
+
+
+class SamLoopTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(cleanup_screenshots)
+        self.orig_q, self.orig_h = A.QUEUE_PATH, A.REVISION_HISTORY_PATH
+        A.QUEUE_PATH = os.path.join(self.tmp.name, "q.json")
+        A.REVISION_HISTORY_PATH = os.path.join(self.tmp.name, "h.json")
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        A.QUEUE_PATH, A.REVISION_HISTORY_PATH = self.orig_q, self.orig_h
+
+    def _done_script(self, seen):
+        def fake(prompt, image_b64=None):
+            seen.append(image_b64)
+            if "ONE next browser action" in prompt:
+                return json.dumps({"action": "done", "selector": "", "value": "",
+                                   "reasoning": "r", "expected": "e"})
+            return json.dumps({"achieved": True, "reason": "ok"})
+        return fake
+
+    def test_sam_crop_feeds_decide(self):
+        seen = []
+        crop_b64 = base64.b64encode(b"cropbytes").decode()
+        decide_sam = {"bbox": [0, 0, 640, 450], "score": 0.5, "boxes": 3}
+        with mock.patch.object(A, "sam_enabled", return_value=True), \
+                mock.patch.object(A, "call_sam_31", side_effect=[decide_sam, None]), \
+                mock.patch.object(A, "crop_with_sam", return_value=crop_b64), \
+                mock.patch.object(A, "call_spark", new=self._done_script(seen)):
+            rev = A.agent_loop("g", {"id": "x", "sam_prompt": "controls"}, FakePage())
+        full = base64.b64encode(b"fake-png-bytes").decode()
+        self.assertEqual(seen[0], crop_b64)
+        self.assertEqual(seen[1], full)
+        sam = rev["turns"][0]["sam"]
+        self.assertTrue(sam["used"])
+        self.assertEqual(sam["score"], 0.5)
+        self.assertTrue(os.path.exists("/tmp/agent_turn_1_crop.png"))
+        sam_verify = rev["turns"][0]["sam_verify"]
+        self.assertFalse(sam_verify["used"])
+        self.assertEqual(sam_verify["reason"], "no grounding")
+
+    def test_sam_none_falls_back_to_full(self):
+        seen = []
+        with mock.patch.object(A, "sam_enabled", return_value=True), \
+                mock.patch.object(A, "call_sam_31", return_value=None), \
+                mock.patch.object(A, "call_spark", new=self._done_script(seen)):
+            rev = A.agent_loop("g", {"id": "x", "sam_prompt": "controls"}, FakePage())
+        full = base64.b64encode(b"fake-png-bytes").decode()
+        self.assertEqual(seen[0], full)
+        self.assertEqual(seen[1], full)
+        sam = rev["turns"][0]["sam"]
+        self.assertFalse(sam["used"])
+        self.assertEqual(sam["reason"], "no grounding")
+        sam_verify = rev["turns"][0]["sam_verify"]
+        self.assertFalse(sam_verify["used"])
+
+    def test_verify_uses_own_crop(self):
+        seen = []
+        verify_crop = base64.b64encode(b"verifycrop").decode()
+        verify_sam = {"bbox": [10, 10, 400, 300], "score": 0.7, "boxes": 5}
+        with mock.patch.object(A, "sam_enabled", return_value=True), \
+                mock.patch.object(A, "call_sam_31", side_effect=[verify_sam]), \
+                mock.patch.object(A, "crop_with_sam", return_value=verify_crop), \
+                mock.patch.object(A, "call_spark", new=self._done_script(seen)):
+            rev = A.agent_loop("g", {"id": "x", "sam_verify_prompt": "delivery table"},
+                               FakePage())
+        full = base64.b64encode(b"fake-png-bytes").decode()
+        self.assertEqual(seen[0], full)
+        self.assertEqual(seen[1], verify_crop)
+        sam_verify = rev["turns"][0]["sam_verify"]
+        self.assertTrue(sam_verify["used"])
+        self.assertEqual(sam_verify["score"], 0.7)
+        self.assertEqual(sam_verify["prompt"], "delivery table")
+        self.assertTrue(os.path.exists("/tmp/agent_turn_1_verify_crop.png"))
+
+    def test_no_sam_prompt_skips_sam(self):
+        seen = []
+        with mock.patch.object(A, "call_sam_31") as msam, \
+                mock.patch.object(A, "call_spark", new=self._done_script(seen)):
+            A.agent_loop("g", {"id": "x"}, FakePage())
+        msam.assert_not_called()
 
 
 if __name__ == "__main__":

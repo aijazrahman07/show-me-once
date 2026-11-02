@@ -36,6 +36,11 @@ META_API_URL = "https://api.meta.ai/v1/chat/completions"
 META_MODEL_DEFAULT = "muse-spark-1.3"
 MAX_TURNS = 10
 
+SAM_RESPONSES_URL = "https://api.meta.ai/v1/responses"
+SAM_MODEL = "sam-3.1"
+SAM_MIN_COVERAGE = 0.01
+SAM_PAD_PX = 64
+
 STATUS_MATCH = "match"
 STATUS_SHORTAGE = "Discrepancy\u2014shortage"
 STATUS_OVERAGE = "Discrepancy\u2014overage"
@@ -190,6 +195,90 @@ def call_spark(prompt, image_b64=None):
         raise RuntimeError(f"unexpected Spark response shape: {json.dumps(data)[:500]}")
 
 
+def sam_enabled():
+    try:
+        import requests  # noqa: F401
+        import meta_sam_parser  # noqa: F401
+        import PIL  # noqa: F401
+    except ImportError:
+        return False
+    return bool(os.getenv("SAM_API_KEY") or get_meta_api_key())
+
+
+def call_sam_31(screenshot_b64, prompt_text="delivery table"):
+    """Ground prompt_text in the screenshot via SAM 3.1 (Responses API).
+
+    Uses the official unary image shape (streaming image requests fail) and
+    parses output_text with meta-sam-parser. Returns {"bbox": [x, y, w, h],
+    "score": float, "boxes": n} for the best-confidence box, or None when
+    SAM is unavailable or finds nothing. Never raises: any failure means
+    "no grounding" and the caller falls back to the full screenshot.
+    """
+    key = os.getenv("SAM_API_KEY") or get_meta_api_key()
+    if not key:
+        return None
+    try:
+        import requests
+        from meta_sam_parser import SegmentationBoxRecord, image_segmentation_format
+    except ImportError:
+        return None
+    try:
+        r = requests.post(
+            SAM_RESPONSES_URL,
+            headers={"Authorization": "Bearer " + key},
+            json={"model": SAM_MODEL, "stream": False,
+                  "input": [{"type": "message", "role": "user", "content": [
+                      {"type": "input_text", "text": prompt_text},
+                      {"type": "input_image",
+                       "image_url": "data:image/png;base64," + screenshot_b64}]}],
+                  "metadata": {"score_threshold": "0.0", "include_confidence": "true"}},
+            timeout=90)
+        if r.status_code != 200:
+            return None
+        out = r.json()["output"][0]["content"][0]["text"]
+    except Exception:  # noqa: BLE001 - transport/shape failure -> no grounding
+        return None
+    try:
+        parser = image_segmentation_format().create_parser()
+        boxes = [rec for snap in parser.push(out) for rec in snap.records
+                 if isinstance(rec, SegmentationBoxRecord)]
+    except Exception:  # noqa: BLE001 - unparseable output -> no grounding
+        return None
+    if not boxes:
+        return None
+    best = max(boxes, key=lambda b: b.confidence or 0)
+    return {"bbox": [best.left, best.top, best.right - best.left, best.bottom - best.top],
+            "score": float(best.confidence or 0), "boxes": len(boxes)}
+
+
+def crop_with_sam(screenshot_b64, sam_result, pad_px=SAM_PAD_PX):
+    """Crop screenshot b64 to the SAM bbox (+padding, clamped to the image).
+
+    Boxes under SAM_MIN_COVERAGE are ignored: tiny UI groundings are noise
+    and would cut context Spark needs. Returns the original on any failure.
+    """
+    try:
+        import io
+        from PIL import Image
+    except ImportError:
+        return screenshot_b64
+    try:
+        x, y, w, h = (int(v) for v in sam_result["bbox"])
+        img = Image.open(io.BytesIO(base64.b64decode(screenshot_b64)))
+        W, H = img.size
+        if w <= 0 or h <= 0 or W <= 0 or H <= 0:
+            return screenshot_b64
+        if w * h / (W * H) < SAM_MIN_COVERAGE:
+            return screenshot_b64
+        box = (max(0, x - pad_px), max(0, y - pad_px),
+               min(W, x + w + pad_px), min(H, y + h + pad_px))
+        buf = io.BytesIO()
+        img.crop(box).save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:  # noqa: BLE001 - any crop failure keeps the full image
+        return screenshot_b64
+
+
 def load_procedures():
     data = load_json_file(PROCEDURES_PATH, [])
     return data if isinstance(data, list) else []
@@ -229,22 +318,54 @@ def _append_history(record):
     save_json_file(REVISION_HISTORY_PATH, history)
 
 
-def _verify_turn(goal, action, screenshot_bytes):
+def _sam_focus(screenshot_b64, phrase, crop_path=None):
+    """Try SAM grounding + crop; returns (b64_to_use, info). Falls back to full."""
+    info = {"prompt": phrase, "used": False}
+    if not phrase:
+        return screenshot_b64, info
+    if not sam_enabled():
+        info["reason"] = "sam disabled"
+        return screenshot_b64, info
+    sam_result = call_sam_31(screenshot_b64, phrase)
+    if not sam_result:
+        info["reason"] = "no grounding"
+        return screenshot_b64, info
+    info.update({"bbox": sam_result["bbox"], "score": sam_result["score"],
+                 "boxes": sam_result["boxes"]})
+    cropped = crop_with_sam(screenshot_b64, sam_result)
+    if cropped == screenshot_b64:
+        info["reason"] = "box below min coverage or crop failed"
+        return screenshot_b64, info
+    info["used"] = True
+    if crop_path:
+        with open(crop_path, "wb") as f:
+            f.write(base64.b64decode(cropped))
+    return cropped, info
+
+
+def _verify_turn(goal, action, screenshot_bytes, sam_phrase="", turn=None):
+    if screenshot_bytes:
+        full_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
+        crop_path = f"/tmp/agent_turn_{turn}_verify_crop.png" if turn is not None else None
+        verify_b64, sam_verify = _sam_focus(full_b64, sam_phrase, crop_path)
+    else:
+        verify_b64, sam_verify = None, {"prompt": sam_phrase, "used": False,
+                                        "reason": "no screenshot"}
+    region_note = " The screenshot is cropped to the region of interest." if sam_verify["used"] else ""
     prompt = (
         f"Goal: {goal}\n"
         f"Action just taken: {json.dumps(action)}\n"
         f"Expected: {action.get('expected')}\n"
-        "The screenshot shows the page after the action. "
+        f"The screenshot shows the page after the action.{region_note} "
         "Was the expected outcome achieved? Reply with ONLY JSON: "
         '{"achieved": true/false, "reason": "..."}'
     )
     try:
-        raw = strip_code_fences(call_spark(
-            prompt, base64.b64encode(screenshot_bytes).decode("ascii") if screenshot_bytes else None))
+        raw = strip_code_fences(call_spark(prompt, verify_b64))
         verdict = json.loads(raw)
-        return bool(verdict.get("achieved")), str(verdict.get("reason", ""))
+        return bool(verdict.get("achieved")), str(verdict.get("reason", "")), sam_verify
     except (RuntimeError, ValueError):
-        return False, "verification call failed"
+        return False, "verification call failed", sam_verify
 
 
 def agent_loop(goal, procedure, page):
@@ -267,6 +388,9 @@ def agent_loop(goal, procedure, page):
             break
         with open(pre_path, "wb") as f:
             f.write(shot)
+        full_b64 = base64.b64encode(shot).decode("ascii")
+        sam_phrase = procedure.get("sam_prompt", "") if isinstance(procedure, dict) else ""
+        decide_b64, sam_info = _sam_focus(full_b64, sam_phrase, f"/tmp/agent_turn_{turn}_crop.png")
         decide_prompt = (
             "You are operating the Show Me Once receiving app in a browser.\n"
             f"Goal: {goal}\n"
@@ -282,16 +406,17 @@ def agent_loop(goal, procedure, page):
             '"value") when blocked and a person must decide.'
         )
         try:
-            action = json.loads(strip_code_fences(call_spark(
-                decide_prompt, base64.b64encode(shot).decode("ascii"))))
+            action = json.loads(strip_code_fences(call_spark(decide_prompt, decide_b64)))
         except (RuntimeError, ValueError):
             record = {"goal": goal, "turn": turn, "error": "decide step failed",
+                      "sam": sam_info,
                       "screenshots": {"before": pre_path}, "decidedAt": now_iso()}
             turns.append(record)
             _append_history(record)
             continue
         if not isinstance(action, dict):
             record = {"goal": goal, "turn": turn, "error": "model did not return action JSON",
+                      "sam": sam_info,
                       "screenshots": {"before": pre_path}, "decidedAt": now_iso()}
             turns.append(record)
             _append_history(record)
@@ -311,6 +436,7 @@ def agent_loop(goal, procedure, page):
             })
             save_json_file(QUEUE_PATH, queue)
             record = {"goal": goal, "turn": turn, "action": action, "status": "clarify",
+                      "sam": sam_info,
                       "screenshots": {"before": pre_path}, "decidedAt": now_iso()}
             turns.append(record)
             _append_history(record)
@@ -329,10 +455,14 @@ def agent_loop(goal, procedure, page):
         if post:
             with open(post_path, "wb") as f:
                 f.write(post)
-        verified, reason = _verify_turn(goal, action, post)
+        verify_phrase = ""
+        if isinstance(procedure, dict):
+            verify_phrase = procedure.get("sam_verify_prompt", "") or sam_phrase
+        verified, reason, sam_verify = _verify_turn(goal, action, post, verify_phrase, turn)
         record = {"goal": goal, "turn": turn, "action": action,
                   "expected": action.get("expected"), "verified": verified,
-                  "verifyReason": reason, "error": error,
+                  "verifyReason": reason, "error": error, "sam": sam_info,
+                  "sam_verify": sam_verify,
                   "screenshots": {"before": pre_path, "after": post_path if post else None},
                   "decidedAt": now_iso()}
         turns.append(record)

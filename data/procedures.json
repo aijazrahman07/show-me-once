@@ -53,6 +53,8 @@
       "zero": "#zero"
     },
     "source": "docs/PROCEDURE.md (reviewed 2026-10-28)",
+    "sam_prompt": "reconciliation form controls",
+    "sam_verify_prompt": "delivery table with PO quantity",
     "steps": [
       {
         "instruction": "Select the delivery in the dropdown",
